@@ -4,8 +4,8 @@ import fetch from "node-fetch";
 
 const app = express();
 
-// --- Konfiguration über Umgebungsvariablen (setzen wir in Koyeb) ---
-const AZURE_SPEECH_KEY = process.env.AZURE_SPEECH_KEY;     // dein Azure Speech Key
+// per Koyeb-Umgebungsvariablen setzen:
+const AZURE_SPEECH_KEY = process.env.AZURE_SPEECH_KEY;            // Azure Speech Key
 const AZURE_SPEECH_REGION = process.env.AZURE_SPEECH_REGION || "westeurope";
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
 const PORT = process.env.PORT || 3000;
@@ -17,12 +17,10 @@ app.get("/", (_req, res) => {
   res.type("text/plain").send("Azure TTS proxy OK");
 });
 
-// POST /tts  ->  { text, voiceId, format }  ->  { audioBase64, mime }
+// POST /tts  ->  { text, voiceId, format }  =>  { audioBase64, mime }
 app.post("/tts", async (req, res) => {
   try {
-    if (!AZURE_SPEECH_KEY) {
-      return res.status(500).json({ error: "AZURE_SPEECH_KEY not set" });
-    }
+    if (!AZURE_SPEECH_KEY) return res.status(500).json({ error: "AZURE_SPEECH_KEY not set" });
     const { text, voiceId = "de-DE-AmalaNeural", format = "audio/mp3" } = req.body || {};
     if (!text || !text.trim()) return res.status(400).json({ error: "Missing text" });
 
@@ -33,13 +31,11 @@ app.post("/tts", async (req, res) => {
 
     const ssml = `
       <speak version="1.0" xml:lang="de-DE">
-        <voice name="${voiceId}">
-          ${escapeXml(text)}
-        </voice>
+        <voice name="${voiceId}">${escapeXml(text)}</voice>
       </speak>`.trim();
 
-    const ttsUrl = `https://${AZURE_SPEECH_REGION}.tts.speech.microsoft.com/cognitiveservices/v1`;
-    const r = await fetch(ttsUrl, {
+    const url = `https://${AZURE_SPEECH_REGION}.tts.speech.microsoft.com/cognitiveservices/v1`;
+    const r = await fetch(url, {
       method: "POST",
       headers: {
         "Ocp-Apim-Subscription-Key": AZURE_SPEECH_KEY,
@@ -51,8 +47,8 @@ app.post("/tts", async (req, res) => {
     });
 
     if (!r.ok) {
-      const errText = await r.text().catch(() => "");
-      return res.status(500).json({ error: "Azure TTS error", status: r.status, body: errText });
+      const body = await r.text().catch(() => "");
+      return res.status(500).json({ error: "Azure TTS error", status: r.status, body });
     }
 
     const buf = Buffer.from(await r.arrayBuffer());
@@ -61,16 +57,14 @@ app.post("/tts", async (req, res) => {
       format === "audio/ogg" ? "audio/ogg" :
       "audio/mpeg";
 
-    return res.json({ mime, audioBase64: buf.toString("base64") });
+    res.json({ mime, audioBase64: buf.toString("base64") });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Server error", detail: String(e) });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Azure TTS proxy listening on :${PORT}`);
-});
+app.listen(PORT, () => console.log(`Azure TTS proxy listening on :${PORT}`));
 
 function escapeXml(s = "") {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
